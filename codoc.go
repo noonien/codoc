@@ -68,9 +68,31 @@ func GetFunction(id string) *Function {
 	defer mu.RUnlock()
 
 	fn, ok := funcs[id]
-	if !ok {
+	if ok {
+		return &fn
+	}
+	// Find the last dot in the id to split into struct and method parts
+	lastDotIndex := strings.LastIndex(id, ".")
+	if lastDotIndex == -1 {
 		return nil
 	}
+
+	// Extract the struct and method names
+	structID := id[:lastDotIndex]
+	methodname := id[lastDotIndex+1:]
+
+	// Get the struct
+	st := GetStruct(structID)
+	if st == nil {
+		return nil
+	}
+
+	// Get the method from the struct
+	fn, exists := st.Methods[methodname]
+	if !exists {
+		return nil
+	}
+
 	return &fn
 }
 
