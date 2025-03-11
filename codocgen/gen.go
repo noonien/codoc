@@ -1,3 +1,5 @@
+// Package codocgen provides tools for generating code documentation from Go source code.
+// This package analyzes Go packages and produces codoc.Package objects with documentation.
 package codocgen
 
 import (
@@ -12,7 +14,9 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// RegisterPath registers a package at the given path.
+// RegisterPath registers a package at the given path with the codoc registry.
+// It analyzes the package, generates documentation, and adds it to the global registry.
+// Options can be provided to filter what gets included in the documentation.
 func RegisterPath(path string, opts ...Option) error {
 	pkg, err := FromPath(path, opts...)
 	if err != nil {
@@ -24,6 +28,9 @@ func RegisterPath(path string, opts ...Option) error {
 }
 
 // FromPath generates documentation for a package at the given path.
+// It analyzes the Go source code in the specified path and returns a codoc.Package
+// containing all the extracted documentation information.
+// Options can be provided to filter what gets included in the documentation.
 func FromPath(path string, opts ...Option) (*codoc.Package, error) {
 	conf := &config{}
 	for _, opt := range opts {
@@ -51,6 +58,7 @@ func FromPath(path string, opts ...Option) (*codoc.Package, error) {
 	pkgast := pkgs[info.Name]
 	pkgdoc := doc.New(pkgast, info.ID, doc.AllDecls)
 
+	// Extract all package functions
 	funcs := make(map[string]codoc.Function, len(pkgdoc.Funcs))
 	for _, fn := range pkgdoc.Funcs {
 		fn := getFunc(fn)
@@ -59,6 +67,7 @@ func FromPath(path string, opts ...Option) (*codoc.Package, error) {
 		}
 	}
 
+	// Extract all structs and their methods
 	structs := make(map[string]codoc.Struct, len(pkgdoc.Types))
 	for _, typ := range pkgdoc.Types {
 		ts := typ.Decl.Specs[0].(*ast.TypeSpec)
@@ -67,6 +76,7 @@ func FromPath(path string, opts ...Option) (*codoc.Package, error) {
 			continue
 		}
 
+		// Add functions associated with the type (but not methods)
 		for _, fn := range typ.Funcs {
 			fn := getFunc(fn)
 			if conf.filterFunc(fn) {
@@ -74,6 +84,7 @@ func FromPath(path string, opts ...Option) (*codoc.Package, error) {
 			}
 		}
 
+		// Add methods of the struct
 		methods := make(map[string]codoc.Function, len(typ.Methods))
 		for _, fn := range typ.Methods {
 			m := getFunc(fn)
@@ -82,6 +93,7 @@ func FromPath(path string, opts ...Option) (*codoc.Package, error) {
 			}
 		}
 
+		// Extract field documentation
 		fields := map[string]codoc.Field{}
 		for _, field := range st.Fields.List {
 			for _, name := range field.Names {
@@ -108,6 +120,7 @@ func FromPath(path string, opts ...Option) (*codoc.Package, error) {
 		}
 	}
 
+	// Create the complete package documentation
 	return &codoc.Package{
 		Name:      info.Name,
 		ID:        info.ID,
@@ -117,10 +130,15 @@ func FromPath(path string, opts ...Option) (*codoc.Package, error) {
 	}, nil
 }
 
+// PackageError represents errors encountered during package loading and analysis.
+// It wraps a slice of packages.Error from the go/packages package.
 type PackageError []packages.Error
 
+// Error implements the error interface for PackageError.
 func (PackageError) Error() string { return "package contains errors" }
 
+// getInfo loads basic package information using the go/packages API.
+// It returns a *packages.Package with the loaded package information.
 func getInfo(path string) (*packages.Package, error) {
 	infos, err := packages.Load(nil, path)
 	if err != nil {
@@ -142,9 +160,13 @@ func getInfo(path string) (*packages.Package, error) {
 	return info, nil
 }
 
+// getFunc extracts function information from a *doc.Func.
+// It extracts the function name, documentation, arguments, and results,
+// and returns a codoc.Function.
 func getFunc(fn *doc.Func) codoc.Function {
 	dt := fn.Decl.Type
 
+	// Extract argument names
 	var args []string
 	if dt.Params != nil {
 		for _, arg := range dt.Params.List {
@@ -156,6 +178,7 @@ func getFunc(fn *doc.Func) codoc.Function {
 		}
 	}
 
+	// Extract result names
 	var results []string
 	if dt.Results != nil {
 		for _, res := range dt.Results.List {
